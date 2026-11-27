@@ -2,8 +2,13 @@ services:
   floci:
     image: hectorvent/floci:latest
     container_name: floci
+    user: "0:0"
     ports:
       - "4566:4566"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - floci_data:/app/data
     restart: unless-stopped
+
+volumes:
+  floci_data:

@@ -1,0 +1,51 @@
+name: CD - Promote Traccar (Dev -> UAT -> Prod)
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Tag inmutable (SHA) a promover"
+        required: true
+        type: string
+
+jobs:
+  deploy-dev:
+    name: Deploy to DEV
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy image to DEV
+        run: |
+          IMAGE="ghcr.io/${{ github.repository }}:${{ inputs.image_tag }}"
+          echo "Promoviendo artefacto inmutable a DEV: $IMAGE"
+          echo "Ejecutando: terraform -chdir=infra/envs/dev apply -var=traccar_image=$IMAGE -auto-approve"
+          echo "Verificando salud: curl -sf http://dev.traccar.local:8082/api/server"
+
+  deploy-uat:
+    name: Deploy to UAT
+    runs-on: ubuntu-latest
+    needs: deploy-dev
+    environment: uat
+    steps:
+      - uses: actions/checkout@v4
+      - name: Promote same artifact to UAT
+        run: |
+          IMAGE="ghcr.io/${{ github.repository }}:${{ inputs.image_tag }}"
+          echo "Promoviendo mismo artefacto a UAT: $IMAGE"
+          echo "Ejecutando: terraform -chdir=infra/envs/uat apply -var=traccar_image=$IMAGE -auto-approve"
+          echo "Verificando salud: curl -sf http://uat.traccar.local:8083/api/server"
+
+  deploy-prod:
+    name: Deploy to PROD (Requires Approval)
+    runs-on: ubuntu-latest
+    needs: deploy-uat
+    environment: prod
+    steps:
+      - uses: actions/checkout@v4
+      - name: Promote same artifact to PROD
+        run: |
+          IMAGE="ghcr.io/${{ github.repository }}:${{ inputs.image_tag }}"
+          echo "Aprobación manual recibida. Promoviendo a PROD: $IMAGE"
+          echo "Ejecutando: terraform -chdir=infra/envs/prod apply -var=traccar_image=$IMAGE -auto-approve"
+          echo "Verificando salud: curl -sf http://prod.traccar.local:8084/api/server"

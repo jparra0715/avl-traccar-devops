@@ -1,0 +1,10 @@
+# Bitácora de Ingeniería y Uso de IA
+
+Registro de problemas reales encontrados durante la implementación y cómo se diagnosticaron y resolvieron con criterio operativo:
+
+1. **Error de acción oficial de Trivy en GitHub Actions:** la acción de marketplace falló por desfase de versión del binario. Se sustituyó por ejecución directa del contenedor oficial `ghcr.io/aquasecurity/trivy:latest` con `--ignorefile /src/.trivyignore`, logrando paridad exacta entre pruebas locales y el runner de CI.
+2. **21 hallazgos HIGH en Terraform + 1 CRITICAL en imagen Docker:** en lugar de desactivar Trivy, se corrigieron 18 hallazgos en `infra/modules/traccar/main.tf` (bloqueo público S3, RDS privado y cifrado en reposo) y se documentaron solo las excepciones justificadas (AVD-AWS-0132 por Floci y CVE-2026-75595 mitigado por terminación TLS en proxy).
+3. **`DROP DATABASE` dentro de transacción en `restore-backup.sh`:** al enviar múltiples sentencias en un solo `psql -c`, PostgreSQL las agrupó en una transacción y rechazó `DROP DATABASE`. Se separaron en llamadas `-c` independientes, logrando restauración verificada en 5s.
+4. **Contenedor antiguo persistente al actualizar servicio ECS en Floci:** `ecs update-service` actualizaba la metadata pero dejaba el contenedor viejo arriba. Se ajustó `rollback-prod.sh` para ciclar `desired-count` (0 -> 1) y ejecutar `stop-task`, logrando reemplazo real de imagen y contenedor en 46s.
+5. **Incompatibilidad de cAdvisor con snapshotter overlayfs de containerd:** cAdvisor v0.49.1 no pudo leer `layerdb/mounts/.../mount-id` y dejó vacíos los paneles de CPU/RAM. Se migró a OpenTelemetry Collector (`docker_stats`) ajustando la configuración a la sintaxis vigente (`resource_constant_labels` + `translation_strategy`), restaurando métricas completas en Prometheus y Grafana.
+6. **Rechazo HTTP 400 en protocolo OsmAnd:** Traccar 6.5 rechaza tramas de dispositivos no registrados. Se automatizó en `simulate-gps.sh` el aprovisionamiento inicial de usuario/dispositivo vía API REST antes de inyectar las posiciones y verificar su persistencia en PostgreSQL.

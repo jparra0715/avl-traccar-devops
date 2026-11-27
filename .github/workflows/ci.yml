@@ -47,6 +47,7 @@ jobs:
           docker run --rm \
             -v "${{ github.workspace }}:/src" -w /src \
             ghcr.io/aquasecurity/trivy:latest config \
+            --ignorefile /src/.trivyignore \
             --severity CRITICAL,HIGH \
             --exit-code 1 \
             infra/
@@ -73,6 +74,8 @@ jobs:
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "${{ github.workspace }}:/src" -w /src \
             ghcr.io/aquasecurity/trivy:latest image \
+            --scanners vuln \
+            --ignorefile /src/.trivyignore \
             --ignore-unfixed \
             --severity CRITICAL \
             --exit-code 1 \

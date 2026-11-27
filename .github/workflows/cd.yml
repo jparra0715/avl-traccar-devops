@@ -41,7 +41,7 @@ jobs:
     needs: resolve-tag
     environment: dev
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Login en GHCR
         uses: docker/login-action@v3
@@ -90,7 +90,7 @@ jobs:
     needs: [resolve-tag, deploy-dev]
     environment: uat
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Login en GHCR
         uses: docker/login-action@v3
@@ -139,7 +139,7 @@ jobs:
     needs: [resolve-tag, deploy-uat]
     environment: prod
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Login en GHCR
         uses: docker/login-action@v3

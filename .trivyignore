@@ -1,0 +1,9 @@
+# Floci local no emula politicas ni rotacion real de llaves KMS gestionadas por cliente (CMK).
+# En AWS productivo se habilita SSE-KMS con llave CMK dedicada.
+AVD-AWS-0132
+AWS-0132
+
+# CVE en netty-handler-4.1.113.Final.jar incluido en la imagen oficial traccar/traccar:6.5-alpine
+# (SNI Routing Bypass en TLS directo). Mitigacion: Traccar no expone TLS directo; la terminacion
+# TLS va en el proxy inverso / ALB con ACM. Dependabot monitorea actualizaciones de la imagen base.
+CVE-2026-75595

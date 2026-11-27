@@ -32,14 +32,17 @@ resource "aws_db_instance" "postgres" {
   engine_version          = "16"
   instance_class          = "db.t3.micro"
   allocated_storage       = 20
+  storage_encrypted       = true
   db_name                 = "traccar_${var.env}"
   username                = var.db_username
   password                = var.db_password
   backup_retention_period = var.backup_retention_period
   skip_final_snapshot     = true
-  publicly_accessible     = true
+  publicly_accessible     = false
   lifecycle {
-    ignore_changes = [auto_minor_version_upgrade, backup_retention_period, publicly_accessible]
+    ignore_changes = [auto_minor_version_upgrade, backup_retention_period, publicly_accessible,
+      storage_encrypted
+    ]
   }
 }
 
@@ -109,4 +112,13 @@ resource "aws_ecs_service" "traccar" {
   cluster         = aws_ecs_cluster.this.id
   task_definition = aws_ecs_task_definition.traccar.arn
   desired_count   = 1
+}
+
+
+resource "aws_s3_bucket_public_access_block" "backups" {
+  bucket                  = aws_s3_bucket.backups.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
 }

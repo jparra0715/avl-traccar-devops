@@ -2,7 +2,7 @@
   "uid": "avl-traccar-ops",
   "title": "AVL Traccar - Observabilidad Operativa",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "10s",
   "time": { "from": "now-15m", "to": "now" },
   "panels": [
@@ -85,7 +85,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "expr": "rate(container_cpu_usage_seconds_total{name=~\"floci-.*|traccar-proxy\"}[1m]) * 100", "legendFormat": "{{name}}", "refId": "A" }
+        { "expr": "container_cpu_utilization{container_name=~\".*(floci-|traccar-proxy).*\"}", "legendFormat": "{{container_name}}", "refId": "A" }
       ],
       "fieldConfig": { "defaults": { "unit": "percent" } }
     },
@@ -96,7 +96,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "expr": "container_memory_working_set_bytes{name=~\"floci-.*|traccar-proxy\"} / 1048576", "legendFormat": "{{name}}", "refId": "A" }
+        { "expr": "container_memory_usage_total{container_name=~\".*(floci-|traccar-proxy).*\"} / 1048576", "legendFormat": "{{container_name}}", "refId": "A" }
       ],
       "fieldConfig": { "defaults": { "unit": "mebibytes" } }
     },

@@ -17,13 +17,14 @@ recuperar() {
 trap recuperar EXIT
 
 echo "[1/4] Verificando estado inicial en Prometheus (prod debe ser 1)..."
-curl -s 'http://localhost:9090/api/v1/query?query=probe_success{env="prod"}' \
+curl -sG 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=probe_success{env="prod"}' \
   | jq -r '.data.result[] | "      prod = \(.value[1])"'
 
 echo "[2/4] Simulando caida controlada de PROD (deteniendo ${PROD_CONTAINER})..."
 docker stop "$PROD_CONTAINER" >/dev/null
 
-echo "[3/4] Esperando que Prometheus dispare TraccarProdDown (for: 15s, max ~60s)..."
+echo "[3/4] Esperando que Prometheus dispare TraccarProdDown (for: 15s, max ~75s)..."
 FIRED=0
 for i in $(seq 1 15); do
   STATE=$(curl -s 'http://localhost:9090/api/v1/alerts' \

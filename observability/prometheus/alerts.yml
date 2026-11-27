@@ -35,11 +35,11 @@ groups:
           description: "El endpoint /api/server en PROD supera 1.5s de respuesta."
 
       - alert: ContainerHighMemory
-        expr: (container_memory_working_set_bytes{name=~"floci-.*traccar.*"} / 1048576) > 1536
+        expr: (container_memory_usage_total{container_name=~".*floci-.*traccar.*"} / 1048576) > 1536
         for: 1m
         labels:
           severity: warning
           service: traccar
         annotations:
-          summary: "Uso alto de memoria en {{ $labels.name }}"
+          summary: "Uso alto de memoria en {{ $labels.container_name }}"
           description: "El contenedor supera 1.5 GiB de RAM."

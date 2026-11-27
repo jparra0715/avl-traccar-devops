@@ -15,9 +15,9 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
-  - job_name: "cadvisor"
+  - job_name: "docker-stats"
     static_configs:
-      - targets: ["cadvisor:8080"]
+      - targets: ["otel-collector:8889"]
 
   - job_name: "traccar-http"
     metrics_path: /probe

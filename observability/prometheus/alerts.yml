@@ -1,0 +1,45 @@
+groups:
+  - name: traccar_avl_alerts
+    interval: 10s
+    rules:
+      - alert: TraccarProdDown
+        expr: probe_success{job="traccar-http", env="prod"} == 0
+        for: 15s
+        labels:
+          severity: critical
+          env: prod
+          service: traccar
+        annotations:
+          summary: "Traccar PROD no responde en /api/server"
+          description: "La sonda HTTP contra Traccar PROD fallo durante mas de 15s. Verificar tarea ECS y proxy Nginx."
+
+      - alert: TraccarNonProdDown
+        expr: probe_success{job="traccar-http", env=~"dev|uat"} == 0
+        for: 30s
+        labels:
+          severity: warning
+          service: traccar
+        annotations:
+          summary: "Traccar {{ $labels.env }} no responde en /api/server"
+          description: "El ambiente {{ $labels.env }} dejo de responder HTTP 200."
+
+      - alert: TraccarProdHighLatency
+        expr: probe_duration_seconds{job="traccar-http", env="prod"} > 1.5
+        for: 30s
+        labels:
+          severity: warning
+          env: prod
+          service: traccar
+        annotations:
+          summary: "Latencia alta en Traccar PROD ({{ $value | printf \"%.2f\" }}s)"
+          description: "El endpoint /api/server en PROD supera 1.5s de respuesta."
+
+      - alert: ContainerHighMemory
+        expr: (container_memory_usage_total{container_name=~".*floci-.*traccar.*"} / 1048576) > 1536
+        for: 1m
+        labels:
+          severity: warning
+          service: traccar
+        annotations:
+          summary: "Uso alto de memoria en {{ $labels.container_name }}"
+          description: "El contenedor supera 1.5 GiB de RAM."

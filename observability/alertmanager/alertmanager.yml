@@ -1,0 +1,12 @@
+global:
+  resolve_timeout: 1m
+
+route:
+  receiver: "ops-default"
+  group_by: ["alertname", "env"]
+  group_wait: 5s
+  group_interval: 15s
+  repeat_interval: 30m
+
+receivers:
+  - name: "ops-default"

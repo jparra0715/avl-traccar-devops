@@ -1,4 +1,4 @@
-FROM traccar/traccar:6.5-alpine
+FROM traccar/traccar:6.17-alpine
 
 LABEL org.opencontainers.image.source="https://github.com/jparra0715/avl-traccar-devops"
 LABEL org.opencontainers.image.description="Traccar AVL sobre PostgreSQL - Prueba tecnica Finanzauto"

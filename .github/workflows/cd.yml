@@ -1,51 +1,183 @@
-name: CD - Promote Traccar (Dev -> UAT -> Prod)
+name: CD - Promocion Traccar (Dev -> UAT -> Prod)
 
 on:
+  workflow_run:
+    workflows: ["CI - Validar IaC, Seguridad e Imagen"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Tag inmutable (SHA) a promover"
+        description: "SHA inmutable de la imagen a promover"
         required: true
         type: string
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
-  deploy-dev:
-    name: Deploy to DEV
+  resolve-tag:
+    name: Resolver artefacto inmutable
     runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    outputs:
+      image_tag: ${{ steps.tag.outputs.image_tag }}
+    steps:
+      - name: Definir SHA a promover
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.image_tag }}"
+          else
+            TAG="${{ github.event.workflow_run.head_sha }}"
+          fi
+          echo "image_tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Artefacto inmutable seleccionado: ghcr.io/${{ github.repository }}:${TAG}"
+
+  deploy-dev:
+    name: Desplegar a DEV + Smoke Test
+    runs-on: ubuntu-latest
+    needs: resolve-tag
     environment: dev
     steps:
       - uses: actions/checkout@v4
-      - name: Deploy image to DEV
+
+      - name: Login en GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Promover imagen a DEV y validar salud real con PostgreSQL 16
         run: |
-          IMAGE="ghcr.io/${{ github.repository }}:${{ inputs.image_tag }}"
-          echo "Promoviendo artefacto inmutable a DEV: $IMAGE"
-          echo "Ejecutando: terraform -chdir=infra/envs/dev apply -var=traccar_image=$IMAGE -auto-approve"
-          echo "Verificando salud: curl -sf http://dev.traccar.local:8082/api/server"
+          IMAGE="ghcr.io/${{ github.repository }}:${{ needs.resolve-tag.outputs.image_tag }}"
+          echo "Desplegando en DEV: $IMAGE"
+          echo "Comando IaC: terraform -chdir=infra/envs/dev apply -var=traccar_image=$IMAGE -auto-approve"
+
+          docker pull "$IMAGE"
+          docker network create smoke-dev
+          docker run -d --name pg-dev --network smoke-dev \
+            -e POSTGRES_DB=traccar_dev -e POSTGRES_USER=traccar -e POSTGRES_PASSWORD=smokepass \
+            postgres:16-alpine
+
+          for i in $(seq 1 20); do
+            docker exec pg-dev pg_isready -U traccar -d traccar_dev && break
+            sleep 2
+          done
+
+          docker run -d --name app-dev --network smoke-dev -p 18082:8082 \
+            -e CONFIG_USE_ENVIRONMENT_VARIABLES=true \
+            -e DATABASE_DRIVER=org.postgresql.Driver \
+            -e DATABASE_URL=jdbc:postgresql://pg-dev:5432/traccar_dev \
+            -e DATABASE_USER=traccar \
+            -e DATABASE_PASSWORD=smokepass \
+            -e LOGGER_CONSOLE=true \
+            "$IMAGE"
+
+          ./scripts/smoke-test.sh http://localhost:18082 30 3
+
+      - name: Limpiar contenedores de smoke test
+        if: always()
+        run: |
+          docker rm -f app-dev pg-dev 2>/dev/null || true
+          docker network rm smoke-dev 2>/dev/null || true
 
   deploy-uat:
-    name: Deploy to UAT
+    name: Promover a UAT + Smoke Test
     runs-on: ubuntu-latest
-    needs: deploy-dev
+    needs: [resolve-tag, deploy-dev]
     environment: uat
     steps:
       - uses: actions/checkout@v4
-      - name: Promote same artifact to UAT
+
+      - name: Login en GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Promover mismo artefacto a UAT y validar salud
         run: |
-          IMAGE="ghcr.io/${{ github.repository }}:${{ inputs.image_tag }}"
-          echo "Promoviendo mismo artefacto a UAT: $IMAGE"
-          echo "Ejecutando: terraform -chdir=infra/envs/uat apply -var=traccar_image=$IMAGE -auto-approve"
-          echo "Verificando salud: curl -sf http://uat.traccar.local:8083/api/server"
+          IMAGE="ghcr.io/${{ github.repository }}:${{ needs.resolve-tag.outputs.image_tag }}"
+          echo "Promoviendo mismo SHA a UAT: $IMAGE"
+          echo "Comando IaC: terraform -chdir=infra/envs/uat apply -var=traccar_image=$IMAGE -auto-approve"
+
+          docker pull "$IMAGE"
+          docker network create smoke-uat
+          docker run -d --name pg-uat --network smoke-uat \
+            -e POSTGRES_DB=traccar_uat -e POSTGRES_USER=traccar -e POSTGRES_PASSWORD=smokepass \
+            postgres:16-alpine
+
+          for i in $(seq 1 20); do
+            docker exec pg-uat pg_isready -U traccar -d traccar_uat && break
+            sleep 2
+          done
+
+          docker run -d --name app-uat --network smoke-uat -p 18083:8082 \
+            -e CONFIG_USE_ENVIRONMENT_VARIABLES=true \
+            -e DATABASE_DRIVER=org.postgresql.Driver \
+            -e DATABASE_URL=jdbc:postgresql://pg-uat:5432/traccar_uat \
+            -e DATABASE_USER=traccar \
+            -e DATABASE_PASSWORD=smokepass \
+            -e LOGGER_CONSOLE=true \
+            "$IMAGE"
+
+          ./scripts/smoke-test.sh http://localhost:18083 30 3
+
+      - name: Limpiar contenedores de smoke test
+        if: always()
+        run: |
+          docker rm -f app-uat pg-uat 2>/dev/null || true
+          docker network rm smoke-uat 2>/dev/null || true
 
   deploy-prod:
-    name: Deploy to PROD (Requires Approval)
+    name: Promover a PROD (Requiere aprobacion) + Smoke Test
     runs-on: ubuntu-latest
-    needs: deploy-uat
+    needs: [resolve-tag, deploy-uat]
     environment: prod
     steps:
       - uses: actions/checkout@v4
-      - name: Promote same artifact to PROD
+
+      - name: Login en GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Promover mismo artefacto a PROD tras aprobacion manual
         run: |
-          IMAGE="ghcr.io/${{ github.repository }}:${{ inputs.image_tag }}"
-          echo "Aprobación manual recibida. Promoviendo a PROD: $IMAGE"
-          echo "Ejecutando: terraform -chdir=infra/envs/prod apply -var=traccar_image=$IMAGE -auto-approve"
-          echo "Verificando salud: curl -sf http://prod.traccar.local:8084/api/server"
+          IMAGE="ghcr.io/${{ github.repository }}:${{ needs.resolve-tag.outputs.image_tag }}"
+          echo "Aprobacion recibida. Promoviendo a PROD: $IMAGE"
+          echo "Comando IaC: terraform -chdir=infra/envs/prod apply -var=traccar_image=$IMAGE -auto-approve"
+
+          docker pull "$IMAGE"
+          docker network create smoke-prod
+          docker run -d --name pg-prod --network smoke-prod \
+            -e POSTGRES_DB=traccar_prod -e POSTGRES_USER=traccar -e POSTGRES_PASSWORD=smokepass \
+            postgres:16-alpine
+
+          for i in $(seq 1 20); do
+            docker exec pg-prod pg_isready -U traccar -d traccar_prod && break
+            sleep 2
+          done
+
+          docker run -d --name app-prod --network smoke-prod -p 18084:8082 \
+            -e CONFIG_USE_ENVIRONMENT_VARIABLES=true \
+            -e DATABASE_DRIVER=org.postgresql.Driver \
+            -e DATABASE_URL=jdbc:postgresql://pg-prod:5432/traccar_prod \
+            -e DATABASE_USER=traccar \
+            -e DATABASE_PASSWORD=smokepass \
+            -e LOGGER_CONSOLE=true \
+            "$IMAGE"
+
+          ./scripts/smoke-test.sh http://localhost:18084 30 3
+
+      - name: Limpiar contenedores de smoke test
+        if: always()
+        run: |
+          docker rm -f app-prod pg-prod 2>/dev/null || true
+          docker network rm smoke-prod 2>/dev/null || true

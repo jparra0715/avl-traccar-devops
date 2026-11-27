@@ -1,4 +1,4 @@
-name: CI - Validate IaC & Build Immutable Image
+name: CI - Validar IaC, Seguridad e Imagen
 
 on:
   push:
@@ -12,50 +12,85 @@ permissions:
 
 jobs:
   terraform-validate:
-    name: Terraform Format & Validate
+    name: Terraform fmt y validate (${{ matrix.env }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
         env: [dev, uat, prod]
     steps:
-      - name: Checkout
+      - name: Descargar repo
         uses: actions/checkout@v4
 
-      - name: Setup Terraform
+      - name: Instalar Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.9.8"
 
-      - name: Terraform Format Check
+      - name: Verificar formato IaC
         run: terraform fmt -check -recursive infra/
 
-      - name: Terraform Init (sin backend) & Validate (${{ matrix.env }})
+      - name: Inicializar sin backend y validar (${{ matrix.env }})
         working-directory: infra/envs/${{ matrix.env }}
         run: |
           terraform init -backend=false
           terraform validate
 
-  build-and-push:
-    name: Build & Push Docker Image (GHCR)
+  iac-security-scan:
+    name: Escaneo seguridad IaC (Trivy)
     runs-on: ubuntu-latest
-    needs: terraform-validate
     steps:
-      - name: Checkout
+      - name: Descargar repo
         uses: actions/checkout@v4
 
-      - name: Login to GitHub Container Registry
-        if: github.event_name != 'pull_request'
+      - name: Escanear configuracion Terraform con Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: "config"
+          scan-ref: "infra/"
+          format: "table"
+          severity: "CRITICAL,HIGH"
+          exit-code: "1"
+
+  build-and-scan:
+    name: Construir y escanear imagen Docker
+    runs-on: ubuntu-latest
+    needs: [terraform-validate, iac-security-scan]
+    steps:
+      - name: Descargar repo
+        uses: actions/checkout@v4
+
+      - name: Construir imagen local para escaneo
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          push: false
+          tags: traccar-local:${{ github.sha }}
+
+      - name: Escanear vulnerabilidades de la imagen (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: "traccar-local:${{ github.sha }}"
+          format: "table"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL"
+          exit-code: "1"
+
+      - name: Login en GHCR (solo en main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push immutable image
+      - name: Publicar imagen inmutable por SHA en GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: |
             ghcr.io/${{ github.repository }}:${{ github.sha }}
             ghcr.io/${{ github.repository }}:latest

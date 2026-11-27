@@ -19,7 +19,7 @@ jobs:
         env: [dev, uat, prod]
     steps:
       - name: Descargar repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Instalar Terraform
         uses: hashicorp/setup-terraform@v3
@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Descargar repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Escanear configuracion Terraform con Trivy
         run: |
@@ -58,7 +58,7 @@ jobs:
     needs: [terraform-validate, iac-security-scan]
     steps:
       - name: Descargar repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Construir imagen local para escaneo
         uses: docker/build-push-action@v6
